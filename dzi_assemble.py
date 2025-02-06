@@ -11,7 +11,7 @@
 #         Width="7026"/>
 #</Image>
 
-import argparse, math, sys
+import argparse, math, sys, os
 from collections import namedtuple
 import xml.etree.ElementTree as ET
 import pyvips
@@ -40,7 +40,8 @@ def dzi_info(filename):
     overlap = int(root.get('Overlap'))
     tilesize = int(root.get('TileSize'))
     size = {k: int(v) for k, v in root[0].attrib.items()} # Python-sigh!
-    return returntuple("format,overlap,tilesize,size",format,overlap,tilesize,size)
+    tiledir = filename.removesuffix('.dzi')+'_files'
+    return returntuple("filename,tiledir,format,overlap,tilesize,size",filename,tiledir,format,overlap,tilesize,size)
     
 if __name__ == '__main__':
     args = get_args()
@@ -52,20 +53,21 @@ if __name__ == '__main__':
     print(f'Assembling from level {level} = {levels}-{args.level}')
 
     # Tiles wide, high
-    width=math.ceil(info.size['Width']/(2**args.level))
-    height=math.ceil(info.size['Height']/(2**args.level))
+    subsample = 2**args.level
+    width=math.ceil(info.size['Width']/subsample)
+    height=math.ceil(info.size['Height']/subsample)
 
     # Filename: x_y.format
-    max_x=math.ceil(info.size['Width']/(info.tilesize*2**args.level))
-    max_y=math.ceil(info.size['Height']/(info.tilesize*2**args.level))
+    max_x=math.ceil(info.size['Width']/(info.tilesize*subsample))
+    max_y=math.ceil(info.size['Height']/(info.tilesize*subsample))
     print(f'Tiling {max_x}x{max_y} images of size {info.tilesize} -> {width}x{height}')
 
     # Tile using pivyps
     if info.overlap==0:
-        tiles = [pyvips.Image.new_from_file(f"{args.input.removesuffix('.dzi')}_files/{level}/{x}_{y}.{info.format}", access="sequential")
+        tiles = [pyvips.Image.new_from_file(os.path.join(info.tiledir,str(level),f'{x}_{y}.{info.format}'), access="sequential")
             for y in range(max_y) for x in range(max_x)]
     else: # Overlap imposes need for cropping
-        tiles = [pyvips.Image.new_from_file(f"{args.input.removesuffix('.dzi')}_files/{level}/{x}_{y}.{info.format}", access="sequential")
+        tiles = [pyvips.Image.new_from_file(os.path.join(info.tiledir,str(level),f'{x}_{y}.{info.format}'), access="sequential")
                 .crop(info.overlap if x>0 else 0, info.overlap if y>0 else 0, 
                       info.tilesize if x+1<max_x else (width-1)%info.tilesize+1, info.tilesize if y+1<max_y else (height-1)%info.tilesize+1)
                 for y in range(max_y) for x in range(max_x)]
